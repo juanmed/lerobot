@@ -14,7 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .batch_processor import AddBatchDimensionProcessorStep
+try:
+    from .batch_processor import AddBatchDimensionProcessorStep
+except ModuleNotFoundError:  # pragma: no cover - exercised in dataset-only installs without torch
+    AddBatchDimensionProcessorStep = None
 from .converters import (
     batch_to_transition,
     create_transition,
@@ -52,8 +55,10 @@ __all__ = [
     "ProcessorStepRegistry",
     "RobotAction",
     "RobotObservation",
-    "AddBatchDimensionProcessorStep",
     "RobotProcessorPipeline",
     "transition_to_batch",
     "TransitionKey",
 ]
+
+if AddBatchDimensionProcessorStep is not None:
+    __all__.append("AddBatchDimensionProcessorStep")
