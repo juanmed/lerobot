@@ -142,6 +142,7 @@ from lerobot.utils.control_utils import (
 )
 from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.robot_utils import precise_sleep
+from lerobot.utils.timer_window import CountdownTimerWindow
 from lerobot.utils.utils import (
     get_safe_torch_device,
     init_logging,
@@ -170,6 +171,8 @@ class DatasetRecordConfig:
     motion_to_start_recording: float = 1.0
     # Time to wait before monitoring motion so leader and follower can settle.
     stabilize_wait_time: float = 1.0
+    # Show a fullscreen countdown timer for episode and reset phases.
+    show_timer: bool = False
     # Number of episodes to record.
     num_episodes: int = 50
     # Encode frames in the dataset into video
@@ -310,6 +313,7 @@ def record_loop(
     single_task: str | None = None,
     display_data: bool = False,
     display_compressed_images: bool = False,
+    timer_window: CountdownTimerWindow | None = None,
 ):
     if dataset is not None and dataset.fps != fps:
         raise ValueError(f"The dataset fps should be equal to requested fps ({dataset.fps} != {fps}).")
@@ -348,6 +352,8 @@ def record_loop(
     no_action_count = 0
     timestamp = 0
     start_episode_t = time.perf_counter()
+    if timer_window is not None and control_time_s is not None:
+        timer_window.update_remaining(control_time_s)
     while timestamp < control_time_s:
         start_loop_t = time.perf_counter()
 
@@ -440,6 +446,11 @@ def record_loop(
         precise_sleep(max(sleep_time_s, 0.0))
 
         timestamp = time.perf_counter() - start_episode_t
+        if timer_window is not None and control_time_s is not None:
+            timer_window.update_remaining(max(control_time_s - timestamp, 0.0))
+
+    if timer_window is not None and control_time_s is not None:
+        timer_window.update_remaining(0.0)
 
 
 def _is_position_action_key(key: str) -> bool:
@@ -569,6 +580,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
 
     dataset = None
     listener = None
+    timer_window = CountdownTimerWindow() if cfg.dataset.show_timer else None
 
     try:
         if cfg.dataset.start_on_motion and (teleop is None or cfg.policy is not None):
@@ -659,6 +671,8 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                         continue
 
                 log_say(f"Recording episode {dataset.num_episodes}", cfg.play_sounds)
+                if timer_window is not None:
+                    timer_window.start_episode(cfg.dataset.episode_time_s)
                 record_loop(
                     robot=robot,
                     events=events,
@@ -675,6 +689,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                     single_task=cfg.dataset.single_task,
                     display_data=cfg.display_data,
                     display_compressed_images=display_compressed_images,
+                    timer_window=timer_window,
                 )
 
                 # Execute a few seconds without recording to give time to manually reset the environment
@@ -683,6 +698,8 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                     (recorded_episodes < cfg.dataset.num_episodes - 1) or events["rerecord_episode"]
                 ):
                     log_say("Reset the environment", cfg.play_sounds)
+                    if timer_window is not None:
+                        timer_window.start_reset(cfg.dataset.reset_time_s)
 
                     record_loop(
                         robot=robot,
@@ -695,6 +712,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                         control_time_s=cfg.dataset.reset_time_s,
                         single_task=cfg.dataset.single_task,
                         display_data=cfg.display_data,
+                        timer_window=timer_window,
                     )
 
                 if events["rerecord_episode"]:
@@ -719,6 +737,9 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
 
         if not is_headless() and listener:
             listener.stop()
+
+        if timer_window is not None:
+            timer_window.close()
 
         if cfg.dataset.push_to_hub:
             dataset.push_to_hub(tags=cfg.dataset.tags, private=cfg.dataset.private)
