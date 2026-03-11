@@ -83,15 +83,18 @@ class CountdownTimerWindow:
 
         root.title("LeRobot Timer")
         root.configure(bg=self._EPISODE_STYLE.background)
-        root.attributes("-fullscreen", True)
-        root.bind("<Escape>", lambda _event: root.attributes("-fullscreen", False))
+        root.minsize(320, 200)
+        try:
+            root.state("zoomed")
+        except Exception:  # nosec B110
+            root.geometry(f"{root.winfo_screenwidth()}x{root.winfo_screenheight()}+0+0")
 
         label = tk.Label(
             root,
             text="0",
             bg=self._EPISODE_STYLE.background,
             fg=self._EPISODE_STYLE.foreground,
-            font=("Helvetica", 320, "bold"),
+            font=("Helvetica", 180, "bold"),
         )
         label.pack(expand=True, fill="both")
 
