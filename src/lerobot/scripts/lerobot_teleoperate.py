@@ -56,7 +56,10 @@ import time
 from dataclasses import asdict, dataclass
 from pprint import pformat
 
-import rerun as rr
+try:
+    import rerun as rr
+except ImportError:  # pragma: no cover - exercised when rerun is not installed
+    rr = None
 
 from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig  # noqa: F401
 from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraConfig  # noqa: F401
@@ -81,7 +84,6 @@ from lerobot.robots import (  # noqa: F401
     openarm_follower,
     reachy2,
     so_follower,
-    unitree_g1 as unitree_g1_robot,
 )
 from lerobot.teleoperators import (  # noqa: F401
     Teleoperator,
@@ -98,7 +100,6 @@ from lerobot.teleoperators import (  # noqa: F401
     openarm_mini,
     reachy2_teleoperator,
     so_leader,
-    unitree_g1,
 )
 from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.robot_utils import precise_sleep
@@ -239,7 +240,7 @@ def teleoperate(cfg: TeleoperateConfig):
     except KeyboardInterrupt:
         pass
     finally:
-        if cfg.display_data:
+        if cfg.display_data and rr is not None:
             rr.rerun_shutdown()
         teleop.disconnect()
         robot.disconnect()

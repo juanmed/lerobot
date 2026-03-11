@@ -16,7 +16,11 @@ import numbers
 import os
 
 import numpy as np
-import rerun as rr
+
+try:
+    import rerun as rr
+except ImportError:  # pragma: no cover - exercised when rerun is not installed
+    rr = None
 
 from lerobot.processor import RobotAction, RobotObservation
 
@@ -34,6 +38,8 @@ def init_rerun(
         ip: Optional IP for connecting to a Rerun server.
         port: Optional port for connecting to a Rerun server.
     """
+    if rr is None:
+        raise RuntimeError("Rerun is not installed.")
     batch_size = os.getenv("RERUN_FLUSH_NUM_BYTES", "8000")
     os.environ["RERUN_FLUSH_NUM_BYTES"] = batch_size
     rr.init(session_name)
@@ -73,6 +79,8 @@ def log_rerun_data(
         action: An optional dictionary containing action data to log.
         compress_images: Whether to compress images before logging to save bandwidth & memory in exchange for cpu and quality.
     """
+    if rr is None:
+        return
     if observation:
         for k, v in observation.items():
             if v is None:

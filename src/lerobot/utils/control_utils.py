@@ -22,18 +22,27 @@ import traceback
 from contextlib import nullcontext
 from copy import copy
 from functools import cache
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import torch
 from deepdiff import DeepDiff
 
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.datasets.utils import DEFAULT_FEATURES
-from lerobot.policies.pretrained import PreTrainedPolicy
-from lerobot.policies.utils import prepare_observation_for_inference
-from lerobot.processor import PolicyAction, PolicyProcessorPipeline
 from lerobot.robots import Robot
+
+try:
+    import torch
+except ImportError:  # pragma: no cover - exercised when building the dataset-only variant without torch
+    torch = None
+
+if TYPE_CHECKING:
+    from lerobot.policies.pretrained import PreTrainedPolicy
+    from lerobot.processor import PolicyAction, PolicyProcessorPipeline
+else:
+    PreTrainedPolicy = Any
+    PolicyAction = Any
+    PolicyProcessorPipeline = Any
 
 
 @cache
@@ -67,9 +76,9 @@ def is_headless():
 def predict_action(
     observation: dict[str, np.ndarray],
     policy: PreTrainedPolicy,
-    device: torch.device,
-    preprocessor: PolicyProcessorPipeline[dict[str, Any], dict[str, Any]],
-    postprocessor: PolicyProcessorPipeline[PolicyAction, PolicyAction],
+    device: Any,
+    preprocessor: Any,
+    postprocessor: Any,
     use_amp: bool,
     task: str | None = None,
     robot_type: str | None = None,
@@ -97,6 +106,10 @@ def predict_action(
     Returns:
         A `torch.Tensor` containing the predicted action, ready for the robot.
     """
+    if torch is None:
+        raise RuntimeError("Policy inference is not available in the dataset-only build.")
+    from lerobot.policies.utils import prepare_observation_for_inference
+
     observation = copy(observation)
     with (
         torch.inference_mode(),

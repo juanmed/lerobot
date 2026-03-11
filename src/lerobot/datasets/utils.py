@@ -28,6 +28,7 @@ import numpy as np
 import packaging.version
 import pandas
 import pandas as pd
+import pyarrow as pa
 import pyarrow.dataset as pa_ds
 import pyarrow.parquet as pq
 import torch
@@ -119,10 +120,12 @@ def load_nested_dataset(
     if len(paths) == 0:
         raise FileNotFoundError(f"Provided directory does not contain any parquet file: {pq_dir}")
 
+    filters = [("episode_index", "in", episodes)] if episodes is not None else None
+    tables = [pq.read_table(path, filters=filters) for path in paths]
+    table = pa.concat_tables(tables)
+    info = datasets.DatasetInfo(features=features) if features is not None else None
     with SuppressProgressBars():
-        # We use .from_parquet() memory-mapped loading for efficiency
-        filters = pa_ds.field("episode_index").isin(episodes) if episodes is not None else None
-        return Dataset.from_parquet([str(path) for path in paths], filters=filters, features=features)
+        return Dataset(table, info=info)
 
 
 def get_parquet_num_frames(parquet_path: str | Path) -> int:

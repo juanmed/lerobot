@@ -21,14 +21,32 @@ import subprocess
 import sys
 import time
 from copy import copy, deepcopy
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
+from typing import Any
 
 import numpy as np
-import torch
-from accelerate import Accelerator
 from datasets.utils.logging import disable_progress_bar, enable_progress_bar
+
+try:
+    import torch
+except ImportError:  # pragma: no cover - exercised when building the dataset-only variant without torch
+    torch = None
+
+try:
+    from accelerate import Accelerator
+except ImportError:  # pragma: no cover - accelerate is removed from the dataset-only package surface
+    Accelerator = Any
+
+
+@dataclass(frozen=True)
+class DeviceSpec:
+    type: str
+
+    def __str__(self) -> str:
+        return self.type
 
 
 def inside_slurm():
@@ -37,8 +55,11 @@ def inside_slurm():
     return "SLURM_JOB_ID" in os.environ
 
 
-def auto_select_torch_device() -> torch.device:
+def auto_select_torch_device() -> Any:
     """Tries to select automatically a torch device."""
+    if torch is None:
+        logging.warning("PyTorch is not installed. Falling back to cpu.")
+        return DeviceSpec("cpu")
     if torch.cuda.is_available():
         logging.info("Cuda backend detected, using cuda.")
         return torch.device("cuda")
@@ -54,9 +75,13 @@ def auto_select_torch_device() -> torch.device:
 
 
 # TODO(Steven): Remove log. log shouldn't be an argument, this should be handled by the logger level
-def get_safe_torch_device(try_device: str, log: bool = False) -> torch.device:
+def get_safe_torch_device(try_device: str, log: bool = False) -> Any:
     """Given a string, return a torch.device with checks on whether the device is available."""
     try_device = str(try_device)
+    if torch is None:
+        if try_device != "cpu" and log:
+            logging.warning(f"PyTorch is not installed. Falling back from '{try_device}' to 'cpu'.")
+        return DeviceSpec("cpu")
     if try_device.startswith("cuda"):
         assert torch.cuda.is_available()
         device = torch.device(try_device)
@@ -77,10 +102,12 @@ def get_safe_torch_device(try_device: str, log: bool = False) -> torch.device:
     return device
 
 
-def get_safe_dtype(dtype: torch.dtype, device: str | torch.device):
+def get_safe_dtype(dtype: Any, device: str | Any):
     """
     mps is currently not compatible with float64
     """
+    if torch is None:
+        return dtype
     if isinstance(device, torch.device):
         device = device.type
     if device == "mps" and dtype == torch.float64:
@@ -106,6 +133,8 @@ def get_safe_dtype(dtype: torch.dtype, device: str | torch.device):
 
 def is_torch_device_available(try_device: str) -> bool:
     try_device = str(try_device)  # Ensure try_device is a string
+    if torch is None:
+        return try_device == "cpu"
     if try_device.startswith("cuda"):
         return torch.cuda.is_available()
     elif try_device == "mps":
@@ -119,6 +148,8 @@ def is_torch_device_available(try_device: str) -> bool:
 
 
 def is_amp_available(device: str):
+    if torch is None:
+        return False
     if device in ["cuda", "xpu", "cpu"]:
         return True
     elif device == "mps":

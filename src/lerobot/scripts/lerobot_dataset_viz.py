@@ -64,25 +64,43 @@ import gc
 import logging
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
-import rerun as rr
-import torch
-import torch.utils.data
 import tqdm
+
+try:
+    import rerun as rr
+except ImportError:  # pragma: no cover - exercised when rerun is not installed
+    rr = None
 
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.utils.constants import ACTION, DONE, OBS_STATE, REWARD
 from lerobot.utils.utils import init_logging
 
 
-def to_hwc_uint8_numpy(chw_float32_torch: torch.Tensor) -> np.ndarray:
-    assert chw_float32_torch.dtype == torch.float32
-    assert chw_float32_torch.ndim == 3
-    c, h, w = chw_float32_torch.shape
-    assert c < h and c < w, f"expect channel first images, but instead {chw_float32_torch.shape}"
-    hwc_uint8_numpy = (chw_float32_torch * 255).type(torch.uint8).permute(1, 2, 0).numpy()
-    return hwc_uint8_numpy
+def _to_numpy(value: Any) -> np.ndarray:
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    if hasattr(value, "numpy"):
+        return value.numpy()
+    return np.asarray(value)
+
+
+def _to_scalar(value: Any) -> float | int:
+    if hasattr(value, "item"):
+        return value.item()
+    return value
+
+
+def to_hwc_uint8_numpy(image: Any) -> np.ndarray:
+    chw = _to_numpy(image)
+    assert chw.ndim == 3
+    c, h, w = chw.shape
+    assert c < h and c < w, f"expect channel first images, but instead {chw.shape}"
+    return np.clip(chw * 255, 0, 255).astype(np.uint8).transpose(1, 2, 0)
 
 
 def visualize_dataset(
@@ -98,19 +116,14 @@ def visualize_dataset(
     display_compressed_images: bool = False,
     **kwargs,
 ) -> Path | None:
+    if rr is None:
+        raise RuntimeError("Rerun is not installed.")
     if save:
         assert output_dir is not None, (
             "Set an output directory where to write .rrd files with `--output-dir path/to/directory`."
         )
 
     repo_id = dataset.repo_id
-
-    logging.info("Loading dataloader")
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        num_workers=num_workers,
-        batch_size=batch_size,
-    )
 
     logging.info("Starting Rerun")
 
@@ -133,38 +146,34 @@ def visualize_dataset(
     logging.info("Logging to Rerun")
 
     first_index = None
-    for batch in tqdm.tqdm(dataloader, total=len(dataloader)):
+    for item in tqdm.tqdm(dataset, total=len(dataset)):
+        index = int(_to_scalar(item["index"]))
         if first_index is None:
-            first_index = batch["index"][0].item()
-        # iterate over the batch
-        for i in range(len(batch["index"])):
-            rr.set_time("frame_index", sequence=batch["index"][i].item() - first_index)
-            rr.set_time("timestamp", timestamp=batch["timestamp"][i].item())
+            first_index = index
+        rr.set_time("frame_index", sequence=index - first_index)
+        rr.set_time("timestamp", timestamp=float(_to_scalar(item["timestamp"])))
 
-            # display each camera image
-            for key in dataset.meta.camera_keys:
-                img = to_hwc_uint8_numpy(batch[key][i])
-                img_entity = rr.Image(img).compress() if display_compressed_images else rr.Image(img)
-                rr.log(key, entity=img_entity)
+        for key in dataset.meta.camera_keys:
+            img = to_hwc_uint8_numpy(item[key])
+            img_entity = rr.Image(img).compress() if display_compressed_images else rr.Image(img)
+            rr.log(key, entity=img_entity)
 
-            # display each dimension of action space (e.g. actuators command)
-            if ACTION in batch:
-                for dim_idx, val in enumerate(batch[ACTION][i]):
-                    rr.log(f"{ACTION}/{dim_idx}", rr.Scalars(val.item()))
+        if ACTION in item:
+            for dim_idx, val in enumerate(_to_numpy(item[ACTION]).reshape(-1)):
+                rr.log(f"{ACTION}/{dim_idx}", rr.Scalars(float(val)))
 
-            # display each dimension of observed state space (e.g. agent position in joint space)
-            if OBS_STATE in batch:
-                for dim_idx, val in enumerate(batch[OBS_STATE][i]):
-                    rr.log(f"state/{dim_idx}", rr.Scalars(val.item()))
+        if OBS_STATE in item:
+            for dim_idx, val in enumerate(_to_numpy(item[OBS_STATE]).reshape(-1)):
+                rr.log(f"state/{dim_idx}", rr.Scalars(float(val)))
 
-            if DONE in batch:
-                rr.log(DONE, rr.Scalars(batch[DONE][i].item()))
+        if DONE in item:
+            rr.log(DONE, rr.Scalars(float(_to_scalar(item[DONE]))))
 
-            if REWARD in batch:
-                rr.log(REWARD, rr.Scalars(batch[REWARD][i].item()))
+        if REWARD in item:
+            rr.log(REWARD, rr.Scalars(float(_to_scalar(item[REWARD]))))
 
-            if "next.success" in batch:
-                rr.log("next.success", rr.Scalars(batch["next.success"][i].item()))
+        if "next.success" in item:
+            rr.log("next.success", rr.Scalars(float(_to_scalar(item["next.success"]))))
 
     if mode == "local" and save:
         # save .rrd locally

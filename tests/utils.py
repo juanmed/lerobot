@@ -18,7 +18,11 @@ import platform
 from functools import wraps
 
 import pytest
-import torch
+
+try:
+    import torch
+except ImportError:  # pragma: no cover - dataset-only test environment
+    torch = None
 
 from lerobot import available_cameras, available_motors, available_robots
 from lerobot.utils.import_utils import is_package_available
@@ -101,7 +105,7 @@ def require_cuda(func):
 
     @wraps(func)
     def wrapper(*args, **kwargs):
-        if not torch.cuda.is_available():
+        if torch is None or not torch.cuda.is_available():
             pytest.skip("requires cuda")
         return func(*args, **kwargs)
 

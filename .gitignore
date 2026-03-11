@@ -177,3 +177,9 @@ outputs/
 *.urdf
 *.xml
 *.part
+
+# Codev
+.agent-farm/
+.consult/
+codev/.update-hashes.json
+.builders/
