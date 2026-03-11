@@ -70,6 +70,7 @@ lerobot-record \
 import logging
 import time
 from dataclasses import asdict, dataclass, field
+from numbers import Real
 from pathlib import Path
 from pprint import pformat
 from typing import Any
@@ -163,6 +164,12 @@ class DatasetRecordConfig:
     episode_time_s: int | float = 60
     # Number of seconds for resetting the environment after each episode.
     reset_time_s: int | float = 60
+    # Wait for leader motion before starting to save the episode.
+    start_on_motion: bool = False
+    # Absolute joint-position delta above which recording starts.
+    motion_to_start_recording: float = 1.0
+    # Time to wait before monitoring motion so leader and follower can settle.
+    stabilize_wait_time: float = 1.0
     # Number of episodes to record.
     num_episodes: int = 50
     # Encode frames in the dataset into video
@@ -204,6 +211,10 @@ class DatasetRecordConfig:
     def __post_init__(self):
         if self.single_task is None:
             raise ValueError("You need to provide a task as argument in `single_task`.")
+        if self.motion_to_start_recording <= 0:
+            raise ValueError("`motion_to_start_recording` must be strictly positive.")
+        if self.stabilize_wait_time < 0:
+            raise ValueError("`stabilize_wait_time` must be non-negative.")
 
 
 @dataclass
@@ -431,6 +442,99 @@ def record_loop(
         timestamp = time.perf_counter() - start_episode_t
 
 
+def _is_position_action_key(key: str) -> bool:
+    return key.endswith(".pos") or key.endswith(".q")
+
+
+def _extract_position_action(action: RobotAction) -> dict[str, float]:
+    position_action = {}
+    for key, value in action.items():
+        if not _is_position_action_key(key):
+            continue
+        if isinstance(value, Real) and not isinstance(value, bool):
+            position_action[key] = float(value)
+    return position_action
+
+
+def _get_teleop_action(
+    robot: Robot,
+    teleop: Teleoperator | list[Teleoperator],
+    teleop_action_processor: RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction],
+    obs: RobotObservation,
+) -> tuple[RobotAction, RobotAction]:
+    if isinstance(teleop, Teleoperator):
+        if robot.name == "unitree_g1":
+            teleop.send_feedback(obs)
+        act = teleop.get_action()
+        return act, teleop_action_processor((act, obs))
+
+    teleop_keyboard = next((t for t in teleop if isinstance(t, KeyboardTeleop)), None)
+    teleop_arm = next((t for t in teleop if not isinstance(t, KeyboardTeleop)), None)
+    if teleop_keyboard is None or teleop_arm is None:
+        raise ValueError("Motion start requires a teleoperator that exposes joint positions.")
+
+    arm_action = teleop_arm.get_action()
+    arm_action = {f"arm_{k}": v for k, v in arm_action.items()}
+    keyboard_action = teleop_keyboard.get_action()
+    base_action = robot._from_keyboard_to_base_action(keyboard_action)
+    act = {**arm_action, **base_action} if len(base_action) > 0 else arm_action
+    return act, teleop_action_processor((act, obs))
+
+
+def wait_for_motion_to_start_recording(
+    robot: Robot,
+    teleop: Teleoperator | list[Teleoperator],
+    events: dict,
+    fps: int,
+    teleop_action_processor: RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction],
+    robot_action_processor: RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction],
+    motion_to_start_recording: float,
+    stabilize_wait_time: float,
+) -> bool:
+    def run_control_step() -> RobotAction:
+        start_loop_t = time.perf_counter()
+        obs = robot.get_observation()
+        raw_action, processed_action = _get_teleop_action(robot, teleop, teleop_action_processor, obs)
+        robot_action_to_send = robot_action_processor((processed_action, obs))
+        robot.send_action(robot_action_to_send)
+
+        dt_s = time.perf_counter() - start_loop_t
+        precise_sleep(max(1 / fps - dt_s, 0.0))
+        return raw_action
+
+    stabilize_deadline = time.perf_counter() + stabilize_wait_time
+    while time.perf_counter() < stabilize_deadline:
+        if events["exit_early"]:
+            return False
+        run_control_step()
+
+    reference_positions: dict[str, float] | None = None
+    next_wait_message_t = time.perf_counter()
+    while True:
+        if events["exit_early"]:
+            return False
+
+        now = time.perf_counter()
+        if now >= next_wait_message_t:
+            print("Waiting for user motion to start recording...")
+            next_wait_message_t = now + 1.0
+
+        raw_action = run_control_step()
+        current_positions = _extract_position_action(raw_action)
+        if not current_positions:
+            raise ValueError("Motion start requires teleop actions with position keys ending in '.pos' or '.q'.")
+
+        if reference_positions is None:
+            reference_positions = current_positions
+            continue
+
+        if any(
+            abs(current_positions[key] - reference_positions[key]) > motion_to_start_recording
+            for key in current_positions.keys() & reference_positions.keys()
+        ):
+            return True
+
+
 @parser.wrap()
 def record(cfg: RecordConfig) -> LeRobotDataset:
     init_logging()
@@ -467,6 +571,9 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
     listener = None
 
     try:
+        if cfg.dataset.start_on_motion and (teleop is None or cfg.policy is not None):
+            raise ValueError("`dataset.start_on_motion=true` requires teleoperation-only recording.")
+
         if cfg.resume:
             dataset = LeRobotDataset(
                 cfg.dataset.repo_id,
@@ -532,6 +639,25 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
         with VideoEncodingManager(dataset):
             recorded_episodes = 0
             while recorded_episodes < cfg.dataset.num_episodes and not events["stop_recording"]:
+                if cfg.dataset.start_on_motion:
+                    started = wait_for_motion_to_start_recording(
+                        robot=robot,
+                        teleop=teleop,
+                        events=events,
+                        fps=cfg.dataset.fps,
+                        teleop_action_processor=teleop_action_processor,
+                        robot_action_processor=robot_action_processor,
+                        motion_to_start_recording=cfg.dataset.motion_to_start_recording,
+                        stabilize_wait_time=cfg.dataset.stabilize_wait_time,
+                    )
+                    if not started:
+                        if events["stop_recording"]:
+                            break
+                        events["exit_early"] = False
+                        if events["rerecord_episode"]:
+                            events["rerecord_episode"] = False
+                        continue
+
                 log_say(f"Recording episode {dataset.num_episodes}", cfg.play_sounds)
                 record_loop(
                     robot=robot,

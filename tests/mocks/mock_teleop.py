@@ -30,17 +30,27 @@ class MockTeleopConfig(TeleoperatorConfig):
     n_motors: int = 3
     random_values: bool = True
     static_values: list[float] | None = None
+    action_sequence: list[list[float]] | None = None
     calibrated: bool = True
 
     def __post_init__(self):
         if self.n_motors < 1:
             raise ValueError(self.n_motors)
 
-        if self.random_values and self.static_values is not None:
-            raise ValueError("Choose either random values or static values")
+        configured_modes = sum(
+            option is not None
+            for option in (
+                self.static_values,
+                self.action_sequence,
+            )
+        ) + int(self.random_values)
+        if configured_modes != 1:
+            raise ValueError("Choose exactly one of random values, static values, or action_sequence")
 
         if self.static_values is not None and len(self.static_values) != self.n_motors:
             raise ValueError("Specify the same number of static values as motors")
+        if self.action_sequence is not None and any(len(values) != self.n_motors for values in self.action_sequence):
+            raise ValueError("Each action sequence item must match the number of motors")
 
 
 class MockTeleop(Teleoperator):
@@ -55,6 +65,7 @@ class MockTeleop(Teleoperator):
         self._is_connected = False
         self._is_calibrated = config.calibrated
         self.motors = [f"motor_{i + 1}" for i in range(config.n_motors)]
+        self._action_sequence_index = 0
 
     @cached_property
     def action_features(self) -> dict[str, type]:
@@ -89,6 +100,11 @@ class MockTeleop(Teleoperator):
     def get_action(self) -> RobotAction:
         if self.config.random_values:
             return {f"{motor}.pos": random.uniform(-100, 100) for motor in self.motors}
+        if self.config.action_sequence is not None:
+            sequence_idx = min(self._action_sequence_index, len(self.config.action_sequence) - 1)
+            values = self.config.action_sequence[sequence_idx]
+            self._action_sequence_index += 1
+            return {f"{motor}.pos": val for motor, val in zip(self.motors, values, strict=True)}
         else:
             return {
                 f"{motor}.pos": val for motor, val in zip(self.motors, self.config.static_values, strict=True)

@@ -121,3 +121,42 @@ def test_record_and_replay(tmp_path):
         mock_get_safe_version.return_value = "v3.0"
         mock_snapshot_download.return_value = str(tmp_path / "record_and_replay")
         replay(replay_cfg)
+
+
+def test_record_start_on_motion(tmp_path):
+    robot_cfg = MockRobotConfig()
+    teleop_cfg = MockTeleopConfig(
+        random_values=False,
+        action_sequence=[
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.2, 0.0, 0.0],
+            [1.5, 0.0, 0.0],
+            [1.5, 0.0, 0.0],
+            [1.5, 0.0, 0.0],
+            [1.5, 0.0, 0.0],
+        ],
+    )
+    dataset_cfg = DatasetRecordConfig(
+        repo_id=DUMMY_REPO_ID,
+        single_task="Dummy task",
+        root=tmp_path / "record_on_motion",
+        num_episodes=1,
+        episode_time_s=0.1,
+        reset_time_s=0,
+        start_on_motion=True,
+        motion_to_start_recording=1.0,
+        stabilize_wait_time=0,
+        push_to_hub=False,
+    )
+    cfg = RecordConfig(
+        robot=robot_cfg,
+        dataset=dataset_cfg,
+        teleop=teleop_cfg,
+        play_sounds=False,
+    )
+
+    dataset = record(cfg)
+
+    assert dataset.num_episodes == 1
+    assert dataset[0]["action"][0].item() == 1.5
