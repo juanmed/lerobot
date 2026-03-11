@@ -1,0 +1,56 @@
+RPI5 Dataset-Only Refactor Plan
+
+Goal
+- Turn this fork into a dataset-only LeRobot variant for Raspberry Pi 5 / Bookworm usage.
+- Preserve dataset recording, replay, visualization, editing, and uploading.
+- Remove training, inference, RL, and policy-heavy code paths from the repository.
+- Eliminate hard runtime/package dependencies on PyTorch and other ML-only libraries for the preserved functionality.
+
+Constraints
+- Do not install or uninstall system or environment packages.
+- Only modify files inside this repository.
+- Validate each stage with existing repository tests that cover the retained functionality.
+
+Stage 1: Inventory and dependency boundary tightening
+- Identify all package metadata, CLI entry points, and import-time couplings that force ML dependencies into dataset/robot workflows.
+- Refactor import boundaries so recording/replay/info/edit commands can be imported without loading policy/training code.
+- Keep policy usage explicitly unsupported in the dataset-only build, but do not remove files yet.
+- Target tests:
+  - `pytest tests/test_control_robot.py`
+  - `pytest tests/scripts/test_edit_dataset_parsing.py`
+
+Stage 2: Replace tensor-only usage in retained dataset tooling
+- Remove PyTorch dependency from the retained dataset/visualization path by rewriting the required helpers to use NumPy / Hugging Face datasets iteration instead of torch DataLoader / torch tensors where feasible.
+- Focus on code exercised by recording, replay, dataset metadata/statistics, image writing, serialization, and dataset visualization.
+- Keep hub upload support intact.
+- Target tests:
+  - `pytest tests/test_control_robot.py`
+  - `pytest tests/datasets/test_compute_stats.py`
+  - `pytest tests/scripts/test_edit_dataset_parsing.py`
+
+Stage 3: Remove ML-facing CLI and package surface
+- Delete training, evaluation, inference, RL, async inference, optimizer, and policy files/directories that are unnecessary for the Raspberry Pi dataset-only use case.
+- Update package metadata and console scripts so only retained commands remain exposed.
+- Update lightweight metadata/help text to describe the dataset-only distribution accurately.
+- Target tests:
+  - `pytest tests/test_control_robot.py`
+  - `pytest tests/scripts/test_edit_dataset_parsing.py`
+
+Stage 4: Restore dataset visualization and dataset editing end-to-end
+- Finalize non-ML dataset visualization path and any remaining dataset tooling gaps caused by ML file removal.
+- Add or adjust non-ML guards and error messages where policy functionality used to exist.
+- Verify import and basic CLI behavior for the retained commands.
+- Target tests:
+  - `pytest tests/test_control_robot.py`
+  - `pytest tests/datasets/test_compute_stats.py`
+  - `pytest tests/scripts/test_edit_dataset_parsing.py`
+
+Stage 5: Final cleanup and verification
+- Remove dead references in docs/examples/metadata that still point to removed ML features where they break retained workflows.
+- Run the final retained test subset and direct command smoke checks for the user-critical commands.
+- Record all executed commands and summarize remaining risks.
+- Target tests:
+  - `pytest tests/test_control_robot.py`
+  - `pytest tests/datasets/test_compute_stats.py`
+  - `pytest tests/scripts/test_edit_dataset_parsing.py`
+  - command smoke checks for `lerobot-find-port --help` and import/help behavior for `lerobot-record`, `lerobot-dataset-viz`, `lerobot-edit-dataset`, `lerobot-info`

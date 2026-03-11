@@ -1,0 +1,64 @@
+Here is my assessment:
+
+---
+
+## Plan Feedback: RPI5 Dataset-Only Refactor
+
+### Critical Risks
+
+**1. `torch` is a hard core dependency — the plan never explicitly removes it from `pyproject.toml`.**
+`torch`, `torchvision`, `diffusers`, `accelerate`, and `wandb` are all listed under `[project.dependencies]`, not optional extras. The plan describes rewriting code away from torch tensors (Stage 2) and removing ML files (Stage 3), but neither stage explicitly calls out restructuring `pyproject.toml` to demote or remove these from core deps. This is the single most important step and it is missing. Without it, installing the package on a Pi still pulls in all ML libraries regardless of what files are removed.
+
+**2. `tests/conftest.py` will break test collection after Stage 3.**
+The conftest imports `policy_feature_factory` and optimizer fixtures (`tests/fixtures/optimizers`). If those files are deleted in Stage 3, `pytest` will fail to collect *any* tests — including the three target tests. This is a hard blocker that needs to happen before or at the start of Stage 3, not as an afterthought.
+
+**3. Stage 3 (deletion) is sequenced before Stage 4 (gap-fixing).**
+Deleting ML files before fixing the remaining visualization/editing gaps means Stages 4 is forced to debug against a partially broken codebase. Reverse the order or at least gate deletion per-module after each gap is fixed.
+
+**4. The `configs/` Draccus tree may eagerly import policy config classes at collection time.**
+Draccus often registers subclasses at import time. If policy config files are deleted in Stage 3 but something in the retained config hierarchy references them, every `lerobot-record` invocation will blow up on import. Stage 1 must audit this explicitly.
+
+---
+
+### Missing Steps
+
+- **pyproject.toml restructuring** deserves its own explicit stage or sub-step: move `torch`, `diffusers`, `accelerate`, `wandb`, `gymnasium` out of core deps. Define what the "dataset-only" install extra looks like (or just remove ML deps entirely).
+- **`lerobot/__init__.py`** exports `available_*` lists that enumerate policy types — these references will be dangling after Stage 3.
+- **`async_inference/` and `transport/` (gRPC)** are not mentioned. They should be explicitly scoped for removal in Stage 3.
+- **`processor/`** uses image transforms likely built on torch. It may be needed for dataset viz — Stage 2 needs to decide: rewrite or remove.
+- **`tests/conftest.py` and ML-heavy fixture files** (`tests/fixtures/optimizers.py`, etc.) need explicit cleanup before file deletion.
+- **`torchcodec`** has a conditional import but is listed in core deps — needs explicit handling.
+
+---
+
+### Sequencing Problems
+
+- Stage 1 is very abstract ("identify," "refactor import boundaries") without a concrete list of files to touch. This makes it easy to miss a coupling and only discover it when tests fail in Stage 2. Add an inventory artifact at the end of Stage 1 (e.g., write a list of files touching `torch`/`policy` that must be refactored before Stage 3).
+- `pyproject.toml` changes should happen in Stage 1 or Stage 2 — not implicitly in Stage 3 under "update package metadata."
+- conftest cleanup must precede or accompany Stage 3 file deletion, not after.
+
+---
+
+### Test Coverage Gaps
+
+- **Hub upload is never tested.** It is listed in the goal but no test stage validates it. At minimum, a `lerobot-push-dataset --help` or a mock-upload smoke test should appear by Stage 4.
+- **`lerobot-replay`** has no test at any stage — only a Stage 5 CLI smoke check. If replay touches any removed torch path, you won't know until Stage 5.
+- **`test_compute_stats.py`** almost certainly uses torch tensors internally (stats are computed with torch). It is listed as a target test in Stage 2, but Stage 2's goal is to *remove* the torch dependency. Verify this test itself doesn't need rewriting, or it will be green for the wrong reason.
+- **`test_control_robot.py`** requires motor/camera hardware or mocking. Confirm the existing mocks are sufficient for CI on a Pi, otherwise this target test will never pass outside a lab.
+- **`lerobot-dataset-viz`** has no functional test at any stage — only a CLI smoke check. A minimal "load dataset, iterate frames, no crash" test would be more meaningful.
+- **No negative test** verifying that `import lerobot.policies` raises a clean, user-friendly error after removal (rather than an ugly `ImportError` traceback).
+
+---
+
+### Summary Priority
+
+| Issue | Severity |
+|---|---|
+| torch not removed from pyproject.toml core deps | Critical |
+| conftest.py breaks test collection after Stage 3 | Critical |
+| Stage 3 before Stage 4 sequencing | High |
+| Draccus config eager-import risk | High |
+| Hub upload never tested | Medium |
+| test_compute_stats.py may use torch internally | Medium |
+| async_inference/transport not scoped | Medium |
+| No negative policy import error test | Low |

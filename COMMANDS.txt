@@ -1,0 +1,111 @@
+Phase 1 / planning and audit
+- `pwd`
+- `rg --files -g 'AGENTS.md' -g 'pyproject.toml' -g 'setup.py' -g 'requirements*' -g 'README*' -g 'Makefile' -g 'tox.ini' -g '.github/**'`
+- `rg --files`
+- `sed -n '1,260p' pyproject.toml`
+- `sed -n '1,260p' setup.py`
+- `sed -n '1,260p' requirements.in`
+- `rg -n "lerobot-record|lerobot-find-port|lerobot-dataset-viz|lerobot-edit-dataset|lerobot-info|lerobot-replay|lerobot-teleoperate|lerobot-eval|lerobot-train" pyproject.toml setup.py src/lerobot -g '!**/__pycache__/**'`
+- `sed -n '1,260p' src/lerobot/scripts/lerobot_record.py`
+- `sed -n '1,260p' src/lerobot/scripts/lerobot_dataset_viz.py`
+- `sed -n '1,240p' src/lerobot/scripts/lerobot_find_port.py`
+- `sed -n '1,260p' src/lerobot/scripts/lerobot_info.py`
+- `rg -n "^(import|from) torch|torch\\." src/lerobot/datasets src/lerobot/scripts src/lerobot/utils src/lerobot/robots src/lerobot/teleoperators src/lerobot/cameras src/lerobot/motors src/lerobot/configs tests/datasets tests/scripts tests/utils/test_visualization_utils.py tests/test_control_robot.py tests/test_available.py`
+- `sed -n '1,260p' tests/test_available.py`
+- `sed -n '1,260p' tests/datasets/test_visualize_dataset.py`
+- `sed -n '1,260p' tests/test_control_robot.py`
+- `sed -n '1,260p' src/lerobot/__init__.py`
+- `sed -n '1,260p' src/lerobot/utils/control_utils.py`
+- `sed -n '1,240p' src/lerobot/datasets/compute_stats.py`
+- `sed -n '1,260p' tests/scripts/test_edit_dataset_parsing.py`
+- `sed -n '1,260p' tests/datasets/test_compute_stats.py`
+- `sed -n '1,260p' src/lerobot/datasets/utils.py`
+- `sed -n '1,260p' src/lerobot/scripts/lerobot_edit_dataset.py`
+- `sed -n '1,260p' src/lerobot/utils/visualization_utils.py`
+- `claude --help`
+- `claude -p "Read PLAN.txt from the current directory. Assess whether the staged plan makes sense for converting this repository into a dataset-only Raspberry Pi 5 build that preserves recording, replay, visualization, editing, and hub upload while removing ML/training/inference dependencies and files. Give concise, concrete feedback focused on risks, missing steps, sequencing problems, and test coverage gaps. Do not modify any repository files yourself; only output the feedback text." > FEEDBACK.txt`
+- `timeout 90 claude -p "Read PLAN.txt from the current directory and give concise feedback on risks, sequencing, and missing tests for this plan."`
+- `timeout 90 claude -p "Read PLAN.txt from the current directory. Assess whether the staged plan makes sense for converting this repository into a dataset-only Raspberry Pi 5 build that preserves recording, replay, visualization, editing, and hub upload while removing ML/training/inference dependencies and files. Give concise, concrete feedback focused on risks, missing steps, sequencing problems, and test coverage gaps. Do not modify any repository files yourself; only output the feedback text."`
+- `ps -ef | grep '[c]laude'`
+- `timeout 30 claude -p "Read PLAN.txt from the current directory. Assess whether the staged plan makes sense for converting this repository into a dataset-only Raspberry Pi 5 build that preserves recording, replay, visualization, editing, and hub upload while removing ML/training/inference dependencies and files. Give concise, concrete feedback focused on risks, missing steps, sequencing problems, and test coverage gaps. Do not modify any repository files yourself; only output the feedback text." > FEEDBACK.txt 2> claude_feedback.err; printf '%s' $? > claude_feedback.exit`
+- `ls -l FEEDBACK.txt claude_feedback.err claude_feedback.exit`
+- `sed -n '1,240p' claude_feedback.err`
+- `cat claude_feedback.exit`
+- `sed -n '1,240p' FEEDBACK.txt`
+- `sed -n '1,260p' tests/conftest.py`
+- `sed -n '1,260p' tests/fixtures/optimizers.py`
+- `sed -n '1,260p' tests/fixtures/dataset_factories.py`
+- `sed -n '1,260p' src/lerobot/configs/policies.py`
+- `sed -n '1,260p' src/lerobot/configs/parser.py`
+- `rg -n "PreTrainedConfig|PreTrainedPolicy|make_policy|make_pre_post_processors|predict_action|get_safe_torch_device" src/lerobot/scripts/lerobot_record.py src/lerobot/utils/control_utils.py src/lerobot/configs src/lerobot/scripts/lerobot_eval.py src/lerobot/scripts/lerobot_train.py`
+- `sed -n '1,260p' src/lerobot/processor/__init__.py`
+- `sed -n '1,260p' src/lerobot/configs/types.py`
+- `sed -n '1,260p' src/lerobot/utils/utils.py`
+- `rg -n "policy|PreTrained|make_policy|predict_action|get_safe_torch_device" src/lerobot/scripts/lerobot_record.py`
+- `sed -n '240,620p' src/lerobot/scripts/lerobot_record.py`
+- `rg -n "Accelerator|auto_select_torch_device|get_safe_torch_device|is_torch_device_available|is_amp_available" src tests`
+
+Phase 2 / decoupling and verification
+- `pytest tests/test_control_robot.py`
+- `pytest tests/scripts/test_edit_dataset_parsing.py`
+- `PYTHONPATH=src pytest tests/test_control_robot.py`
+- `PYTHONPATH=src pytest tests/scripts/test_edit_dataset_parsing.py`
+- `sed -n '1,220p' tests/utils.py`
+- `source /home/juan/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && python -c "import sys,draccus; print(sys.executable); print(draccus.__version__)"`
+- `source /home/juan/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && PYTHONPATH=src pytest tests/test_control_robot.py`
+- `source /home/juan/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && PYTHONPATH=src pytest tests/scripts/test_edit_dataset_parsing.py`
+- `source /home/juan/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && PYTHONPATH=src python -m pytest tests/test_control_robot.py`
+- `source /home/juan/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && PYTHONPATH=src python -m pytest tests/scripts/test_edit_dataset_parsing.py`
+- `source /home/juan/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && python -c "import site; print(site.getsitepackages()[0])"`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages pytest tests/test_control_robot.py`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages pytest tests/scripts/test_edit_dataset_parsing.py`
+- `sed -n '1,320p' src/lerobot/robots/__init__.py`
+- `sed -n '1,320p' src/lerobot/teleoperators/__init__.py`
+- `sed -n '1,260p' src/lerobot/scripts/lerobot_calibrate.py`
+- `sed -n '1,260p' src/lerobot/scripts/lerobot_teleoperate.py`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages pytest tests/test_control_robot.py`
+- `sed -n '1,120p' src/lerobot/processor/hil_processor.py`
+- `sed -n '1,160p' src/lerobot/datasets/factory.py`
+- `sed -n '1,160p' src/lerobot/processor/migrate_policy_normalization.py`
+- `sed -n '1,320p' src/lerobot/scripts/lerobot_dataset_viz.py`
+
+Phase 3 / dataset-path compatibility and ML file removal
+- `rg --files src/lerobot/policies src/lerobot/rl src/lerobot/async_inference src/lerobot/optim src/lerobot/transport src/lerobot/envs examples/training examples/tutorial/act examples/tutorial/async-inf examples/tutorial/diffusion examples/tutorial/pi0 examples/tutorial/rl examples/tutorial/smolvla tests/policies tests/training tests/rl tests/async_inference tests/optim | sed -n '1,400p'`
+- `rg --files src/lerobot/policies examples/tutorial tests/policies tests/rl tests/async_inference tests/optim tests/training src/lerobot/rl src/lerobot/async_inference src/lerobot/optim src/lerobot/transport src/lerobot/envs`
+- `rg -n "class DataProcessorPipeline|class RobotProcessorPipeline|class PolicyProcessorPipeline" src/lerobot/processor/pipeline.py`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages pytest tests/test_control_robot.py`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages pytest tests/datasets/test_compute_stats.py`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages pytest tests/test_control_robot.py`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages pytest tests/scripts/test_edit_dataset_parsing.py`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages pytest tests/datasets/test_compute_stats.py`
+
+Phase 4 / smoke checks and final audit
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages python -m lerobot.scripts.lerobot_info`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages python -c "import lerobot.scripts.lerobot_find_port as m; print(type(m.find_available_ports()).__name__)"`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages python -c "import lerobot.scripts.lerobot_record as m; print(m.RecordConfig.__name__)"`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages python -c "import lerobot.scripts.lerobot_dataset_viz as m; print(m.visualize_dataset.__name__)"`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages python -c "import lerobot.scripts.lerobot_edit_dataset as m; print(m.EditDatasetConfig.__name__)"`
+- `PYTHONPATH=src:/home/juan/miniforge3/envs/lerobot/lib/python3.12/site-packages python -c "import lerobot.scripts.lerobot_replay as m; print(m.ReplayConfig.__name__)"`
+- `git status --short`
+- `rg -n "lerobot-train|lerobot-eval|configs\\.policies|from lerobot\\.policies|lerobot\\.policies" src/lerobot pyproject.toml tests/test_control_robot.py tests/scripts/test_edit_dataset_parsing.py src/lerobot/scripts`
+- `which lerobot-record`
+- `python -c "import shutil; p=shutil.which('lerobot-record'); print(p); print(open(p).read().splitlines()[:3])"`
+- `python -c "import lerobot; print(lerobot.__file__)"`
+- `python -c "import sitecustomize; print(sitecustomize.__file__)"`
+- `python -c "import sys; import sitecustomize; print(sys.path[:5])"`
+- `ls src/lerobot/__init__.py`
+- `python -c "import importlib.util; print(importlib.util.find_spec('lerobot').origin)"`
+- `python -c "import sitecustomize, importlib.util; print(sitecustomize.__file__); print(importlib.util.find_spec('lerobot').origin)"`
+- `python -c "import sitecustomize, lerobot; print(sitecustomize.__file__); print(lerobot.__file__)"`
+- `python -c "import sys, sitecustomize; print('lerobot' in sys.modules); print(sys.modules.get('lerobot'))"`
+- `python -c "import sys, sitecustomize; print(sys.modules['lerobot'].__file__); import lerobot; print(sys.modules['lerobot'].__file__)"`
+- `python -c "import sys, sitecustomize; print(sys.modules['lerobot'].__file__); import lerobot.scripts.lerobot_record as m; print(sys.modules['lerobot'].__file__); print(m.__file__)"`
+- `python -c "import lerobot; print(lerobot.__file__); print(list(lerobot.__path__))"`
+- `python -c "import lerobot.scripts.lerobot_record as m; print(m.__file__); print(m.RecordConfig.__annotations__)"`
+- `python -c "import lerobot; print(lerobot.__file__); print(list(lerobot.__path__)); import lerobot.scripts.lerobot_record as m; print(m.__file__)"`
+- `timeout 20 lerobot-record --help`
+- `timeout 20 lerobot-edit-dataset --help`
+- `python -c "import lerobot; print(lerobot.__file__); print(list(lerobot.__path__)); import lerobot.scripts.lerobot_record as m; print(m.__file__)"`
+- `timeout 20 lerobot-record --help | head -n 80`
+- `timeout 20 lerobot-record --help | rg -n "policy"`
+- `timeout 20 python -m lerobot.scripts.lerobot_record --help | rg -n "policy|usage: lerobot-record"`

@@ -1,0 +1,98 @@
+RPI5 Dataset-Only Refactor Final Plan
+
+Goal
+- Produce a dataset-only LeRobot fork for Raspberry Pi 5 / Bookworm.
+- Keep recording, replay, dataset editing, dataset visualization, and Hub upload working.
+- Remove training, evaluation, inference, RL, async inference, optimizer, and policy code/files.
+- Remove hard package/runtime dependencies on PyTorch and other ML-only libraries from the retained workflows.
+
+Validation principle
+- Every phase ends with existing repository tests that still represent retained functionality.
+- In addition to tests, retained CLI commands get direct smoke checks before the end.
+
+Phase 1: Inventory and import-boundary audit
+Purpose
+- Map all import-time couplings from retained commands into policies, torch, optimizers, RL, async inference, and training code.
+- Identify the exact files and package metadata that must be changed before deleting ML files.
+- Confirm Draccus/config registration paths used by `lerobot-record`, `lerobot-replay`, `lerobot-edit-dataset`, and `lerobot-info`.
+
+Outputs
+- Dependency inventory from `pyproject.toml`, CLI entry points, `lerobot/__init__.py`, `tests/conftest.py`, `tests/fixtures/*`, `src/lerobot/configs/*`, and retained scripts.
+- List of test-collection blockers that must be cleaned before file deletion, especially `tests/conftest.py` and optimizer fixtures.
+
+Target tests
+- `pytest tests/test_control_robot.py`
+- `pytest tests/scripts/test_edit_dataset_parsing.py`
+
+Phase 2: Packaging and retained-path decoupling
+Purpose
+- Remove ML packages from core install metadata first, before file deletion.
+- Update retained scripts and shared utilities so teleop/record/replay/edit/info imports do not require policy or torch modules.
+- Add explicit dataset-only behavior where policy support used to exist, with clear error messages instead of import crashes.
+
+Scope
+- `pyproject.toml` / packaging metadata:
+  remove or demote `torch`, `torchvision`, `torchcodec`, `diffusers`, `accelerate`, `wandb`, and similar ML-only requirements from core dependencies and script exposure.
+- `src/lerobot/scripts/lerobot_record.py`, `src/lerobot/utils/control_utils.py`, config registration paths, and lightweight metadata/help text.
+- `tests/conftest.py` and ML-only fixture/plugin registration so pytest collection still works after ML file removal.
+
+Target tests
+- `pytest tests/test_control_robot.py`
+- `pytest tests/scripts/test_edit_dataset_parsing.py`
+
+Phase 3: Tensor-free dataset tooling for retained workflows
+Purpose
+- Rewrite the retained dataset path to avoid PyTorch for recording, replay, visualization, metadata/statistics, serialization, and upload.
+- Replace torch-only helpers in retained code with NumPy / Hugging Face dataset iteration / simple batching where feasible.
+- Keep hub upload intact.
+
+Scope
+- Dataset modules actually used by retained commands, including visualization and image/video helpers.
+- Any retained utility functions that currently serialize, batch, or transform through torch.
+- Verify replay explicitly, not only record.
+
+Target tests
+- `pytest tests/test_control_robot.py`
+- `pytest tests/datasets/test_compute_stats.py`
+- `pytest tests/scripts/test_edit_dataset_parsing.py`
+
+Phase 4: Remove ML code and shrink package surface
+Purpose
+- After retained paths are independent, delete unnecessary ML-facing code and CLI surface.
+- Remove policies, training, eval, RL, async inference, transport/gRPC support that only exists for inference/training, optimizer modules, and ML examples/docs that break retained workflows.
+
+Scope
+- Remove files/directories for:
+  policies, training scripts, eval script, tokenizer training, RL, async inference, optim, transport, and ML-specific examples/docs as appropriate.
+- Update `lerobot/__init__.py`, package exports, console scripts, and any stale references to removed policy names.
+- Ensure test collection still works after deletion.
+
+Target tests
+- `pytest tests/test_control_robot.py`
+- `pytest tests/datasets/test_compute_stats.py`
+- `pytest tests/scripts/test_edit_dataset_parsing.py`
+
+Phase 5: End-to-end retained verification and cleanup
+Purpose
+- Validate the final dataset-only repository behavior and clean remaining broken references that affect the retained user experience.
+- Record every command executed and produce a concise implementation summary with issues encountered and resolutions.
+
+Checks
+- Existing tests:
+  - `pytest tests/test_control_robot.py`
+  - `pytest tests/datasets/test_compute_stats.py`
+  - `pytest tests/scripts/test_edit_dataset_parsing.py`
+- Command smoke checks:
+  - `python -m lerobot.scripts.lerobot_info`
+  - `python -m lerobot.scripts.lerobot_find_port --help` or direct import/smoke equivalent if argparse-free
+  - `python -m lerobot.scripts.lerobot_record --help`
+  - `python -m lerobot.scripts.lerobot_replay --help`
+  - `python -m lerobot.scripts.lerobot_dataset_viz --help`
+  - `python -m lerobot.scripts.lerobot_edit_dataset --help`
+
+Notes from external review incorporated
+- Core dependency removal from `pyproject.toml` is explicit and early.
+- `tests/conftest.py` and optimizer fixtures are handled before ML file deletion.
+- File deletion is delayed until after retained paths are decoupled.
+- Draccus/config import-time registration is explicitly audited in Phase 1 and fixed in Phase 2.
+- Replay and upload are explicitly covered in retained verification.
