@@ -14,27 +14,39 @@
 
 </div>
 
-**LeRobot** aims to provide models, datasets, and tools for real-world robotics in PyTorch. The goal is to lower the barrier to entry so that everyone can contribute to and benefit from shared datasets and pretrained models.
+**LeRobot** in this fork is focused on real-world robotics dataset workflows: teleoperation, recording, replay, visualization, editing, and upload. The goal is to keep the data collection toolchain lightweight and practical for hardware-first setups such as a Raspberry Pi 5.
 
 🤗 A hardware-agnostic, Python-native interface that standardizes control across diverse platforms, from low-cost arms (SO-100) to humanoids.
 
 🤗 A standardized, scalable LeRobotDataset format (Parquet + MP4 or images) hosted on the Hugging Face Hub, enabling efficient storage, streaming and visualization of massive robotic datasets.
 
-🤗 State-of-the-art policies that have been shown to transfer to the real-world ready for training and deployment.
-
-🤗 Comprehensive support for the open-source ecosystem to democratize physical AI.
+🤗 A dataset-only repository layout with the training, evaluation, RL, and policy-inference surface removed from the codebase.
 
 ## Quick Start
 
-LeRobot can be installed directly from PyPI.
+This repository is a local fork. Installing `lerobot` from PyPI will install the upstream package, not this fork.
+
+To run this repository, install it from this checkout or run it directly from the repository root.
 
 ```bash
-pip install lerobot
+git clone <your-fork-url> jlerobot
+cd jlerobot
+pip install -e .
 lerobot-info
 ```
 
+If you do not want to install the checkout into the environment, you can run commands directly from the repo with:
+
+```bash
+cd /path/to/jlerobot
+PYTHONPATH=src python -m lerobot.scripts.lerobot_info
+```
+
 > [!IMPORTANT]
-> For detailed installation guide, please see the [Installation Documentation](https://huggingface.co/docs/lerobot/installation).
+> If you already have another editable `lerobot` checkout in the same environment, the global console scripts may resolve that other checkout. In that case, either reinstall this fork with `pip install -e .` from this repository or use `PYTHONPATH=src python -m ...` from this repository root.
+
+> [!IMPORTANT]
+> This fork is intentionally dataset-only. The upstream training, policy, RL, and simulation instructions do not apply here.
 
 ## Robots & Control
 
@@ -42,7 +54,7 @@ lerobot-info
   <img src="./media/readme/robots_control_video.webp" width="640px" alt="Reachy 2 Demo">
 </div>
 
-LeRobot provides a unified `Robot` class interface that decouples control logic from hardware specifics. It supports a wide range of robots and teleoperation devices.
+LeRobot provides a unified `Robot` class interface that decouples control logic from hardware specifics. It supports a wide range of robots and teleoperation devices for recording and replay workflows.
 
 ```python
 from lerobot.robots.myrobot import MyRobot
@@ -53,13 +65,13 @@ robot.connect()
 
 # Read observation and send action
 obs = robot.get_observation()
-action = model.select_action(obs)
+action = {...}  # action from a teleoperator or replayed dataset frame
 robot.send_action(action)
 ```
 
 **Supported Hardware:** SO100, LeKiwi, Koch, HopeJR, OMX, EarthRover, Reachy2, Gamepads, Keyboards, Phones, OpenARM, Unitree G1.
 
-While these devices are natively integrated into the LeRobot codebase, the library is designed to be extensible. You can easily implement the Robot interface to utilize LeRobot's data collection, training, and visualization tools for your own custom robot.
+While these devices are natively integrated into the LeRobot codebase, the library is designed to be extensible. You can implement the Robot interface to use the same recording, replay, and dataset tooling with your own hardware.
 
 For detailed hardware setup guides, see the [Hardware Documentation](https://huggingface.co/docs/lerobot/integrate_hardware).
 
@@ -69,7 +81,7 @@ To solve the data fragmentation problem in robotics, we utilize the **LeRobotDat
 
 - **Structure:** Synchronized MP4 videos (or images) for vision and Parquet files for state/action data.
 - **HF Hub Integration:** Explore thousands of robotics datasets on the [Hugging Face Hub](https://huggingface.co/lerobot).
-- **Tools:** Seamlessly delete episodes, split by indices/fractions, add/remove features, and merge multiple datasets.
+- **Tools:** Record new datasets, replay episodes, visualize recordings, upload to the Hub, and edit datasets by deleting episodes, splitting by indices/fractions, adding/removing features, and merging multiple datasets.
 
 ```python
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
@@ -84,54 +96,71 @@ print(f"{dataset[episode_index]['action'].shape=}\n")
 
 Learn more about it in the [LeRobotDataset Documentation](https://huggingface.co/docs/lerobot/lerobot-dataset-v3)
 
-## SoTA Models
+## Recording, Visualization, and Upload
 
-LeRobot implements state-of-the-art policies in pure PyTorch, covering Imitation Learning, Reinforcement Learning, and Vision-Language-Action (VLA) models, with more coming soon. It also provides you with the tools to instrument and inspect your training process.
+This fork is intended for dataset collection workflows. The policy training and inference stack has been removed.
 
-<p align="center">
-  <img alt="Gr00t Architecture" src="./media/readme/VLA_architecture.jpg" width="640px">
-</p>
+### Record a dataset
 
-Training a policy is as simple as running a script configuration:
+Use `lerobot-record` with a robot config, teleoperator config, and dataset destination:
 
 ```bash
-lerobot-train \
-  --policy=act \
-  --dataset.repo_id=lerobot/aloha_mobile_cabinet
+lerobot-record \
+  --robot.type=so100_follower \
+  --robot.port=/dev/ttyUSB0 \
+  --teleop.type=so100_leader \
+  --teleop.port=/dev/ttyUSB1 \
+  --dataset.repo_id=<hf_user>/<dataset_name> \
+  --dataset.single_task="Pick up the cube" \
+  --dataset.num_episodes=10 \
+  --display_data=true
 ```
 
-| Category                   | Models                                                                                                                                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Imitation Learning**     | [ACT](./docs/source/policy_act_README.md), [Diffusion](./docs/source/policy_diffusion_README.md), [VQ-BeT](./docs/source/policy_vqbet_README.md)                                                             |
-| **Reinforcement Learning** | [HIL-SERL](./docs/source/hilserl.mdx), [TDMPC](./docs/source/policy_tdmpc_README.md) & QC-FQL (coming soon)                                                                                                  |
-| **VLAs Models**            | [Pi0Fast](./docs/source/pi0fast.mdx), [Pi0.5](./docs/source/pi05.mdx), [GR00T N1.5](./docs/source/policy_groot_README.md), [SmolVLA](./docs/source/policy_smolvla_README.md), [XVLA](./docs/source/xvla.mdx) |
+### Visualize a dataset
 
-Similarly to the hardware, you can easily implement your own policy & leverage LeRobot's data collection, training, and visualization tools, and share your model to the HF Hub
-
-For detailed policy setup guides, see the [Policy Documentation](https://huggingface.co/docs/lerobot/bring_your_own_policies).
-
-## Inference & Evaluation
-
-Evaluate your policies in simulation or on real hardware using the unified evaluation script. LeRobot supports standard benchmarks like **LIBERO**, **MetaWorld** and more to come.
+Use `lerobot-dataset-viz` to inspect a recorded episode locally or save a `.rrd` file for later viewing:
 
 ```bash
-# Evaluate a policy on the LIBERO benchmark
-lerobot-eval \
-  --policy.path=lerobot/pi0_libero_finetuned \
-  --env.type=libero \
-  --env.task=libero_object \
-  --eval.n_episodes=10
+lerobot-dataset-viz \
+  --repo-id <hf_user>/<dataset_name> \
+  --episode-index 0
 ```
 
-Learn how to implement your own simulation environment or benchmark and distribute it from the HF Hub by following the [EnvHub Documentation](https://huggingface.co/docs/lerobot/envhub)
+You can also point it at a local dataset root:
+
+```bash
+lerobot-dataset-viz \
+  --repo-id <hf_user>/<dataset_name> \
+  --root /path/to/local/dataset \
+  --episode-index 0
+```
+
+### Upload a dataset
+
+You can upload during recording:
+
+```bash
+lerobot-record \
+  ... \
+  --dataset.push_to_hub=true
+```
+
+Or upload/edit an existing dataset with `lerobot-edit-dataset`, for example:
+
+```bash
+lerobot-edit-dataset \
+  --repo_id <hf_user>/<dataset_name> \
+  --operation.type info
+```
+
+This fork keeps the Hugging Face dataset upload path intact for recorded datasets.
 
 ## Resources
 
-- **[Documentation](https://huggingface.co/docs/lerobot/index):** The complete guide to tutorials & API.
+- **[Documentation](https://huggingface.co/docs/lerobot/index):** Upstream reference documentation for dataset format and hardware integration. Training and inference sections do not apply to this fork.
 - **[Chinese Tutorials: LeRobot+SO-ARM101中文教程-同济子豪兄](https://zihao-ai.feishu.cn/wiki/space/7589642043471924447)** Detailed doc for assembling, teleoperate, dataset, train, deploy. Verified by Seed Studio and 5 global hackathon players.
 - **[Discord](https://discord.gg/q8Dzzpym3f):** Join the `LeRobot` server to discuss with the community.
 - **[X](https://x.com/LeRobotHF):** Follow us on X to stay up-to-date with the latest developments.
-- **[Robot Learning Tutorial](https://huggingface.co/spaces/lerobot/robot-learning-tutorial):** A free, hands-on course to learn robot learning using LeRobot.
 
 ## Citation
 
