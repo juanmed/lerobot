@@ -31,7 +31,11 @@ To run this repository, install it from this checkout or run it directly from th
 ```bash
 git clone <your-fork-url> jlerobot
 cd jlerobot
+# Optional but recommended on Debian/Bookworm if you want voice prompts:
+# sudo apt install speech-dispatcher
 pip install -e .
+python -m pip install dynamixel-sdk safetensors
+python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 lerobot-info
 ```
 
