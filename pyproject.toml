@@ -88,6 +88,7 @@ dependencies = [
     "rerun-sdk>=0.24.0,<0.27.0",
 
     # Support dependencies
+    "requests>=2.32.0,<3.0.0",
     "deepdiff>=7.0.1,<9.0.0",
     "imageio[ffmpeg]>=2.34.0,<3.0.0",
     "termcolor>=2.4.0,<4.0.0",
@@ -226,6 +227,7 @@ lerobot-info="lerobot.scripts.lerobot_info:main"
 lerobot-find-joint-limits="lerobot.scripts.lerobot_find_joint_limits:main"
 lerobot-imgtransform-viz="lerobot.scripts.lerobot_imgtransform_viz:main"
 lerobot-edit-dataset="lerobot.scripts.lerobot_edit_dataset:main"
+lerobot-gamiphy-upload="lerobot.scripts.lerobot_gamiphy_upload:main"
 lerobot-setup-can="lerobot.scripts.lerobot_setup_can:main"
 
 # ---------------- Tool Configurations ----------------

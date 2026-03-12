@@ -183,6 +183,11 @@ class DatasetRecordConfig:
     private: bool = False
     # Add tags to your dataset on the hub.
     tags: list[str] | None = None
+    # Upload dataset to gamiphy.ai platform after recording.
+    push_to_gamiphy: bool = False
+    # Override gamiphy.ai API base URL (e.g. for staging). None = use default https://api.gamiphy.ai.
+    # Must use HTTPS unless the host is localhost or 127.0.0.1.
+    gamiphy_base_url: str | None = None
     # Number of subprocesses handling the saving of frames as PNG. Set to 0 to use threads only;
     # set to ≥1 to use subprocesses, each using threads to write images. The best number of processes
     # and threads depends on your system. We recommend 4 threads per camera with 0 processes.
@@ -742,7 +747,16 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             timer_window.close()
 
         if cfg.dataset.push_to_hub:
-            dataset.push_to_hub(tags=cfg.dataset.tags, private=cfg.dataset.private)
+            try:
+                dataset.push_to_hub(tags=cfg.dataset.tags, private=cfg.dataset.private)
+            except Exception:
+                logging.exception("Failed to push dataset to HuggingFace Hub")
+
+        if cfg.dataset.push_to_gamiphy:
+            try:
+                dataset.push_to_gamiphy(base_url=cfg.dataset.gamiphy_base_url)
+            except Exception:
+                logging.exception("Failed to upload dataset to gamiphy.ai")
 
         log_say("Exiting", cfg.play_sounds)
     return dataset

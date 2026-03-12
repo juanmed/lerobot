@@ -848,6 +848,31 @@ class LeRobotDataset(torch.utils.data.Dataset):
                 hub_api.delete_tag(self.repo_id, tag=CODEBASE_VERSION, repo_type="dataset")
             hub_api.create_tag(self.repo_id, tag=CODEBASE_VERSION, revision=branch, repo_type="dataset")
 
+    def push_to_gamiphy(self, base_url: str | None = None) -> str:
+        """Upload this dataset to gamiphy.ai.
+
+        Reads authentication from the ``GAMIPHY_UPLOAD_KEY`` environment variable.
+
+        Args:
+            base_url: Override the default gamiphy.ai API base URL (e.g. for staging).
+                Must use HTTPS unless the host is ``localhost`` or ``127.0.0.1``.
+
+        Returns:
+            The ``dataset_id`` assigned by gamiphy.ai.
+
+        Raises:
+            GamiphyUploadError: If the API key is missing, any HTTP request fails,
+                or the server returns an unexpected response.
+        """
+        from lerobot.utils.gamiphy import upload_dataset_to_gamiphy
+
+        return upload_dataset_to_gamiphy(
+            root=self.root,
+            repo_id=self.repo_id,
+            meta_info=self.meta.info,
+            base_url=base_url,
+        )
+
     def pull_from_repo(
         self,
         allow_patterns: list[str] | str | None = None,

@@ -1,0 +1,140 @@
+CODEX FEEDBACK ON GAMIPHY UPLOAD PLAN
+======================================
+
+Codex reviewed the plan and explored the lerobot codebase to validate integration
+points. Below is the full feedback organized by topic.
+
+CRITICAL ISSUES
+---------------
+
+1. Missing File Manifest in create_dataset() Request
+   The plan sends only {name, metadata} to POST /api/datasets, but the server
+   needs to know what files to sign URLs for BEFORE the upload starts.
+   The request must include a file manifest: relative paths, file sizes, content
+   types (and optionally checksums). Without this, the server cannot generate
+   signed URLs for each file.
+   Fix: Change create_dataset(name, metadata) to create_dataset(name, metadata, files)
+   where `files` is a list/dict of {relative_path, size_bytes, content_type}.
+
+2. Failure Isolation is NOT Achieved by Current Placement
+   The plan claims "gamiphy failure does not affect HF Hub upload" but this is
+   incorrect. In the current record() flow (lerobot_record.py:L744), both uploads
+   are sequential with no exception handling. If push_to_hub() raises, push_to_gamiphy()
+   never runs. If push_to_gamiphy() raises after Hub succeeds, record() still exits
+   with an exception (confusing for the user). For true independence, BOTH uploads
+   need separate try/except blocks with proper logging.
+   Fix:
+     try:
+         dataset.push_to_hub(...)
+     except Exception as e:
+         logging.error(f"Failed to push to HF Hub: {e}")
+     try:
+         dataset.push_to_gamiphy(...)
+     except GamiphyUploadError as e:
+         logging.error(f"Failed to upload to gamiphy.ai: {e}")
+
+3. Signed-Upload Contract is Underspecified
+   Returning only a URL per file is insufficient for S3/GCS-style presigned uploads.
+   Many providers require specific headers to be replayed exactly (e.g., Content-Type,
+   Content-Length, x-amz-* headers). The per-file upload instruction should be:
+     {url: str, method: str, headers: dict}
+   Also: path keys must be normalized to POSIX format (forward slashes) before
+   sending to the API, and when looking up signed URLs locally. Windows path
+   separators will break the lookup.
+   Fix: Use relative_path.as_posix() for all path keys.
+
+4. Partial Upload Failure Leaves Orphaned Dataset Record
+   If 40 of 47 files upload successfully and file 41 fails, a partial/invalid
+   dataset record is left on gamiphy.ai. The confirm endpoint should NOT be called
+   unless ALL files upload successfully. Additionally, an abort/cleanup endpoint
+   (DELETE /api/datasets/{dataset_id}) should be called on failure.
+   Fix: Wrap upload loop in try/except; call abort on failure; only confirm on
+   complete success.
+
+IMPORTANT IMPROVEMENTS
+-----------------------
+
+5. No Timeouts or Retries (Production Weakness)
+   The requests library defaults can block indefinitely. Large video files may
+   exceed default behaviors. The plan needs:
+   - Explicit connect/read timeouts (e.g., connect=10s, read=300s for large files)
+   - Bounded retry logic for transient failures (e.g., 3 retries with exponential
+     backoff for 5xx errors and ConnectionError)
+   The plan mentions UPLOAD_TIMEOUT_S and API_TIMEOUT_S constants but does not
+   specify retry logic or whether urllib3 retries are configured.
+
+6. Import from lerobot.datasets.utils Instead of Hardcoding Patterns
+   The plan makes gamiphy.py "self-contained with no lerobot imports" and hardcodes
+   glob patterns (data/**/*.parquet, meta/*.json, etc.). This duplicates constants
+   already defined in src/lerobot/datasets/utils.py:
+     DATA_DIR = "data"
+     VIDEO_DIR = "videos"
+     EPISODES_DIR = "meta/episodes"
+     INFO_PATH = "meta/info.json"
+   Hardcoding these will cause drift when the dataset format evolves.
+   Fix: Import path constants from lerobot.datasets.utils in collect_dataset_files().
+   The "no lerobot imports" constraint should be relaxed for these stable constants.
+
+7. Security: HTTPS Enforcement for Base URL Override
+   The gamiphy_base_url config option will send the bearer token to any configured
+   host (a credential-exfiltration risk). The client should:
+   - Require HTTPS by default
+   - Allow http://localhost or http://127.0.0.1 only for development/testing
+   - Never log signed URLs or auth-bearing request URLs in exceptions
+   - Disable redirect-following on authenticated API calls (or strip auth headers
+     on redirect) to prevent token leakage via redirects
+
+8. Test Suite Uses pytest, Not unittest
+   The existing test suite in tests/ uses pytest-style tests (no TestCase classes).
+   See tests/test_control_robot.py, tests/datasets/test_datasets.py.
+   The plan proposed unittest.mock which is fine to use inside pytest, but test
+   function structure should follow the existing pytest conventions (plain functions
+   with fixtures, not class methods). Tests should be in tests/utils/test_gamiphy.py.
+
+DESIGN IMPROVEMENTS
+-------------------
+
+9. Metadata Schema Should Be Defined Explicitly
+   The plan passes self.meta.info wholesale to the gamiphy API. This sends internal
+   fields like codebase_version and may miss fields the gamiphy dashboard needs.
+   Define a clean metadata schema to send: fps, total_episodes, total_frames,
+   total_tasks, features (schema), robot_type, source_repo_id.
+
+10. Dataset Name Collision Risk
+    Deriving name from repo_id.split("/")[-1] loses namespace and can collide
+    (e.g., alice/pick-block and bob/pick-block both become "pick-block").
+    Fix: Send both a display_name (repo_id part after "/") AND the full source_repo_id
+    to the API, letting gamiphy handle namespacing/deduplication.
+
+11. Additional Missing Test Cases
+    - record() integration: Hub fails → Gamiphy still attempted (and vice versa)
+    - Path normalization: POSIX keys on Windows paths
+    - video=False dataset (no videos/ directory)
+    - Partial upload failure: confirm NOT called, abort IS called
+    - Auth header NOT sent on signed URL PUT requests
+    - Base URL HTTPS enforcement test
+    - Empty dataset (0 episodes) behavior
+
+MINOR NOTES
+-----------
+
+12. Exception chaining: Use `raise GamiphyUploadError(...) from e` for all
+    caught exceptions to preserve tracebacks.
+
+13. Distinguish error types in GamiphyUploadError or use subclasses:
+    - GamiphyAuthError (401/403)
+    - GamiphyValidationError (400/422)
+    - GamiphyNetworkError (ConnectionError, Timeout)
+    This helps callers decide whether to retry or surface to user.
+
+14. Performance: Sequential uploads are fine for v1, but note that datasets with
+    many video files will be slow. Bounded concurrency (e.g., ThreadPoolExecutor
+    with 4 workers) is the obvious v2 improvement.
+
+OVERALL ASSESSMENT
+------------------
+The plan's shape is reasonable and follows existing lerobot conventions well.
+The critical gaps are: the upload manifest contract (server needs file list upfront),
+true failure isolation (separate try/except for each upload), signed URL contract
+completeness, and partial-failure handling. Addressing these will make the
+integration reliable. The rest are improvements for robustness and maintainability.
