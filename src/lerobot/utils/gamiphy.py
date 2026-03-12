@@ -35,7 +35,12 @@ from lerobot.datasets.utils import DATA_DIR, EPISODES_DIR, VIDEO_DIR
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = "https://api.gamiphy.ai"
+DEFAULT_BASE_URL = "https://gamiphy.ai"
+
+# Supabase Edge Function paths
+_PATH_INIT = "/functions/v1/init-dataset-upload"
+_PATH_FINALIZE = "/functions/v1/finalize-dataset-upload"
+_PATH_ABORT = "/functions/v1/abort-dataset-upload"
 DEFAULT_CONNECT_TIMEOUT = 10.0   # seconds
 DEFAULT_READ_TIMEOUT = 300.0     # seconds for large file uploads
 DEFAULT_MAX_RETRIES = 3
@@ -248,7 +253,7 @@ class GamiphyClient:
         }
         try:
             response = self._session.post(
-                f"{self.base_url}/api/datasets",
+                f"{self.base_url}{_PATH_INIT}",
                 json=body,
                 timeout=self._api_timeout(),
                 allow_redirects=False,
@@ -314,7 +319,8 @@ class GamiphyClient:
         """
         try:
             response = self._session.post(
-                f"{self.base_url}/api/datasets/{dataset_id}/confirm",
+                f"{self.base_url}{_PATH_FINALIZE}",
+                json={"dataset_id": dataset_id},
                 timeout=self._api_timeout(),
                 allow_redirects=False,
             )
@@ -334,7 +340,8 @@ class GamiphyClient:
         """
         try:
             response = self._session.post(
-                f"{self.base_url}/api/datasets/{dataset_id}/abort",
+                f"{self.base_url}{_PATH_ABORT}",
+                json={"dataset_id": dataset_id},
                 timeout=self._api_timeout(),
                 allow_redirects=False,
             )
