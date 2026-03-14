@@ -30,11 +30,12 @@ class _TimerPhaseStyle:
 class CountdownTimerWindow:
     """Fullscreen Tkinter timer that can be updated from a non-UI thread."""
 
-    _EPISODE_STYLE = _TimerPhaseStyle(foreground="white")
+    _EPISODE_STYLE = _TimerPhaseStyle(foreground="#b0b0b0")
     _RESET_STYLE = _TimerPhaseStyle(foreground="#ff8c42")
+    _READY_STYLE = _TimerPhaseStyle(foreground="#b0b0b0")
 
     def __init__(self):
-        self._commands: queue.Queue[tuple[str, float | _TimerPhaseStyle | None]] = queue.Queue()
+        self._commands: queue.Queue[tuple[str, str | float | _TimerPhaseStyle | None]] = queue.Queue()
         self._ready = threading.Event()
         self._thread = threading.Thread(target=self._run, name="lerobot-timer-window", daemon=True)
         self._enabled = True
@@ -57,6 +58,14 @@ class CountdownTimerWindow:
         self._send("phase", self._RESET_STYLE)
         self._send("remaining", duration_s)
 
+    def show_processing(self) -> None:
+        self._send("phase", self._READY_STYLE)
+        self._send("text", "Processing...")
+
+    def show_ready(self) -> None:
+        self._send("phase", self._READY_STYLE)
+        self._send("text", "Ready")
+
     def update_remaining(self, remaining_s: float) -> None:
         self._send("remaining", remaining_s)
 
@@ -66,7 +75,7 @@ class CountdownTimerWindow:
         self._send("close", None)
         self._thread.join(timeout=2.0)
 
-    def _send(self, command: str, payload: float | _TimerPhaseStyle | None) -> None:
+    def _send(self, command: str, payload: str | float | _TimerPhaseStyle | None) -> None:
         if self._enabled:
             self._commands.put((command, payload))
 
@@ -110,6 +119,8 @@ class CountdownTimerWindow:
                         apply_style(payload)
                     elif command == "remaining":
                         label.configure(text=self.format_remaining_seconds(payload))
+                    elif command == "text":
+                        label.configure(text=payload)
                     elif command == "close":
                         root.destroy()
                         return

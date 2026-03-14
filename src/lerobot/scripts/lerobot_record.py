@@ -652,6 +652,8 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             logging.info(
                 "Streaming encoding is disabled. If you have capable hardware, consider enabling it for way faster episode saving. --dataset.streaming_encoding=true --dataset.encoder_threads=2 # --dataset.vcodec=auto. More info in the documentation: https://huggingface.co/docs/lerobot/streaming_video_encoding"
             )
+        if timer_window is not None:
+            timer_window.show_ready()
 
         with VideoEncodingManager(dataset):
             recorded_episodes = 0
@@ -725,10 +727,16 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                     events["rerecord_episode"] = False
                     events["exit_early"] = False
                     dataset.clear_episode_buffer()
+                    if timer_window is not None:
+                        timer_window.show_ready()
                     continue
 
+                if timer_window is not None:
+                    timer_window.show_processing()
                 dataset.save_episode()
                 recorded_episodes += 1
+                if timer_window is not None:
+                    timer_window.show_ready()
     finally:
         log_say("Stop recording", cfg.play_sounds, blocking=True)
 

@@ -243,7 +243,7 @@ def test_create_dataset_422_raises_validation_error():
 def test_create_dataset_connection_error_raises_network_error():
     client = _make_client()
     with patch.object(client._session, "post", side_effect=requests.ConnectionError("refused")):
-        with pytest.raises(GamiphyNetworkError, match="Network error"):
+        with pytest.raises(GamiphyNetworkError):
             client.create_dataset("mybot", "alice/mybot", {}, [])
 
 

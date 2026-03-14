@@ -259,8 +259,11 @@ class GamiphyClient:
                 allow_redirects=False,
             )
             self._raise_for_status(response)
-        except (requests.ConnectionError, requests.Timeout) as e:
-            raise GamiphyNetworkError(f"Network error contacting gamiphy.ai: {e}") from e
+        except (requests.ConnectionError, requests.Timeout, requests.exceptions.RetryError) as e:
+            raise GamiphyNetworkError(
+                f"Could not reach gamiphy.ai init-dataset-upload endpoint. "
+                f"Check that the Edge Function is deployed and the base URL is correct. Details: {e}"
+            ) from e
 
         data = response.json()
         dataset_id: str = data["dataset_id"]
@@ -325,7 +328,7 @@ class GamiphyClient:
                 allow_redirects=False,
             )
             self._raise_for_status(response)
-        except (requests.ConnectionError, requests.Timeout) as e:
+        except (requests.ConnectionError, requests.Timeout, requests.exceptions.RetryError) as e:
             raise GamiphyNetworkError(
                 f"Network error confirming dataset {dataset_id}: {e}"
             ) from e
