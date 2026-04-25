@@ -30,6 +30,7 @@ import draccus
 
 from lerobot.robots import (  # noqa: F401
     RobotConfig,
+    bi_omx_follower,
     bi_so_follower,
     koch_follower,
     lekiwi,
@@ -39,6 +40,7 @@ from lerobot.robots import (  # noqa: F401
 )
 from lerobot.teleoperators import (  # noqa: F401
     TeleoperatorConfig,
+    bi_omx_leader,
     bi_so_leader,
     koch_leader,
     make_teleoperator_from_config,

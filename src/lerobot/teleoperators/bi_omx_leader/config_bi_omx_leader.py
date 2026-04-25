@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,18 +14,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Client side: The environment evolves with a time resolution equal to 1/fps"""
+from dataclasses import dataclass
 
-DEFAULT_FPS = 30
+from ..config import TeleoperatorConfig
 
-"""Server side: Running inference on (at most) 1/fps"""
-DEFAULT_INFERENCE_LATENCY = 1 / DEFAULT_FPS
 
-"""Server side: Timeout for observation queue in seconds"""
-DEFAULT_OBS_QUEUE_TIMEOUT = 2
+@dataclass
+class OmxLeaderArmConfig:
+    """Per-arm configuration for a BiOmxLeader (excludes teleop-level id and calibration_dir)."""
 
-# All action chunking policies
-SUPPORTED_POLICIES = ["act", "smolvla", "diffusion", "tdmpc", "vqbet", "pi0", "pi05", "groot"]
+    port: str
 
-# TODO: Add all other robots
-SUPPORTED_ROBOTS = ["so100_follower", "so101_follower", "bi_so_follower", "omx_follower", "bi_omx_follower"]
+    gripper_open_pos: float = 60.0
+
+
+@TeleoperatorConfig.register_subclass("bi_omx_leader")
+@dataclass
+class BiOmxLeaderConfig(TeleoperatorConfig):
+    """Configuration class for Bimanual OMX Leader teleoperators."""
+
+    left_arm_config: OmxLeaderArmConfig
+    right_arm_config: OmxLeaderArmConfig
