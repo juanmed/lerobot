@@ -46,6 +46,7 @@ HW_ENCODERS = [
     "hevc_nvenc",  # NVIDIA GPU
     "h264_vaapi",  # Linux Intel/AMD
     "h264_qsv",  # Intel Quick Sync
+    "h264_v4l2m2m",  # Raspberry Pi / V4L2
 ]
 
 VALID_VIDEO_CODECS = {"h264", "hevc", "libsvtav1", "auto"} | set(HW_ENCODERS)
