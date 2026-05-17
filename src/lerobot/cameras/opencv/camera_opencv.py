@@ -165,6 +165,9 @@ class OpenCVCamera(Camera):
             )
 
         self._configure_capture_settings()
+        # Flush stale frames from buffer after format negotiation
+        for _ in range(5):
+            self.videocapture.grab()
         self._start_read_thread()
 
         if warmup and self.warmup_s > 0:
@@ -530,7 +533,7 @@ class OpenCVCamera(Camera):
         return frame
 
     @check_if_not_connected
-    def read_latest(self, max_age_ms: int = 500) -> NDArray[Any]:
+    def read_latest(self, max_age_ms: int = 2000) -> NDArray[Any]:
         """Return the most recent frame captured immediately (Peeking).
 
         This method is non-blocking and returns whatever is currently in the
