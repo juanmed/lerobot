@@ -15,5 +15,5 @@ SUBSYSTEM=="tty", ENV{ID_SERIAL_SHORT}=="00D227A3503059384C2E3120FF06181D", SYML
 
 # --- Cameras (video4linux, capture nodes only) ---
 SUBSYSTEM=="video4linux", ENV{ID_V4L_CAPABILITIES}==":capture:", ENV{ID_SERIAL}=="170428-_Integrated_Webcam_HD",                              SYMLINK+="cam_left_wrist"
-SUBSYSTEM=="video4linux", ENV{ID_V4L_CAPABILITIES}==":capture:", ENV{ID_SERIAL}=="Suyin_HD_Camera_200910120001",                              SYMLINK+="cam_right_wrist"
+SUBSYSTEM=="video4linux", ENV{ID_V4L_CAPABILITIES}==":capture:", ENV{ID_SERIAL}=="Generic_USB2.0_PC_CAMERA",                              SYMLINK+="cam_right_wrist"
 SUBSYSTEM=="video4linux", ENV{ID_V4L_CAPABILITIES}==":capture:", ENV{ID_SERIAL}=="Sonix_Technology_Co.__Ltd._USB_2.0_Camera_AY2H91100TN",    SYMLINK+="cam_top"
