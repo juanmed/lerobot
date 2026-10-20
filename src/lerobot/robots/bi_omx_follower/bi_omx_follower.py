@@ -15,10 +15,20 @@
 # limitations under the License.
 
 import logging
+import os
+import time
 from functools import cached_property
 
 from lerobot.types import RobotAction, RobotObservation
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
+
+try:
+    import setaur as _setaur
+    from setaur import SourceType as _SourceType
+
+    _SETAUR_AVAILABLE = True
+except ImportError:
+    _SETAUR_AVAILABLE = False
 
 from ..omx_follower import OmxFollower
 from ..omx_follower.config_omx_follower import OmxFollowerConfig
@@ -104,6 +114,15 @@ class BiOmxFollower(Robot):
         self.left_arm.connect(calibrate)
         self.right_arm.connect(calibrate)
 
+        robot_key = os.getenv("SETAUR_ROBOT_KEY")
+        if _SETAUR_AVAILABLE and robot_key:
+            creds_file = os.getenv("SETAUR_CREDS_FILE") or None
+            _setaur.init(robot_key, creds_file=creds_file)
+            self._setaur_enabled = True
+            logger.info("Setaur telemetry enabled (left shoulder_pan → %s)", os.getenv("SETAUR_ENCODER_SENSOR_ID", "OLL0"))
+        else:
+            self._setaur_enabled = False
+
     @property
     def is_calibrated(self) -> bool:
         return self.left_arm.is_calibrated and self.right_arm.is_calibrated
@@ -126,11 +145,21 @@ class BiOmxFollower(Robot):
 
         # Add "left_" prefix
         left_obs = self.left_arm.get_observation()
+        timestamp_ns = time.time_ns()
         obs_dict.update({f"left_{key}": value for key, value in left_obs.items()})
 
         # Add "right_" prefix
         right_obs = self.right_arm.get_observation()
         obs_dict.update({f"right_{key}": value for key, value in right_obs.items()})
+
+        if self._setaur_enabled:
+            sensor_id = os.getenv("SETAUR_ENCODER_SENSOR_ID", "OLL0")
+            _setaur.sensor(
+                source_id=sensor_id,
+                source_type=_SourceType.SENSOR,
+                timestamp_ns=timestamp_ns,
+                data={"angle": float(left_obs["shoulder_pan.pos"])},
+            )
 
         return obs_dict
 
@@ -156,5 +185,9 @@ class BiOmxFollower(Robot):
 
     @check_if_not_connected
     def disconnect(self):
+        if self._setaur_enabled:
+            _setaur.shutdown()
+            self._setaur_enabled = False
+
         self.left_arm.disconnect()
         self.right_arm.disconnect()
