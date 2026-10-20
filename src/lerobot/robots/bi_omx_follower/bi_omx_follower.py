@@ -120,8 +120,32 @@ class BiOmxFollower(Robot):
             _setaur.init(robot_key, creds_file=creds_file)
             self._setaur_enabled = True
             logger.info("Setaur telemetry enabled (left shoulder_pan → %s)", os.getenv("SETAUR_ENCODER_SENSOR_ID", "OLL0"))
+
+            camera_sensor_id = os.getenv("SETAUR_CAMERA_SENSOR_ID")
+            if camera_sensor_id:
+                try:
+                    import cv2 as _cv2  # noqa: PLC0415
+
+                    cam_device = os.getenv("SETAUR_CAMERA_DEVICE", "/dev/cam_top")
+                    cap = _cv2.VideoCapture(cam_device)
+                    if cap.isOpened():
+                        self._setaur_cap = cap
+                        self._setaur_cv2 = _cv2
+                        self._setaur_frame_id = 0
+                        self._setaur_last_frame_ns = 0
+                        self._setaur_cam_interval_ns = int(1e9 / 5)  # 5 fps
+                        logger.info("Setaur camera telemetry enabled (%s → %s)", cam_device, camera_sensor_id)
+                    else:
+                        logger.warning("Setaur: could not open camera at %s", cam_device)
+                        self._setaur_cap = None
+                except ImportError:
+                    logger.warning("Setaur: cv2 not available, camera telemetry disabled")
+                    self._setaur_cap = None
+            else:
+                self._setaur_cap = None
         else:
             self._setaur_enabled = False
+            self._setaur_cap = None
 
     @property
     def is_calibrated(self) -> bool:
@@ -153,13 +177,39 @@ class BiOmxFollower(Robot):
         obs_dict.update({f"right_{key}": value for key, value in right_obs.items()})
 
         if self._setaur_enabled:
-            sensor_id = os.getenv("SETAUR_ENCODER_SENSOR_ID", "OLL0")
             _setaur.sensor(
-                source_id=sensor_id,
+                source_id=os.getenv("SETAUR_ENCODER_SENSOR_ID", "OLL0"),
                 source_type=_SourceType.SENSOR,
                 timestamp_ns=timestamp_ns,
                 data={"angle": float(left_obs["shoulder_pan.pos"])},
             )
+
+            if self._setaur_cap is not None:
+                now_ns = time.time_ns()
+                if now_ns - self._setaur_last_frame_ns >= self._setaur_cam_interval_ns:
+                    ret, frame = self._setaur_cap.read()
+                    if ret:
+                        cam_ts_ns = time.time_ns()
+                        ok, jpeg_buf = self._setaur_cv2.imencode(
+                            ".jpg", frame, [self._setaur_cv2.IMWRITE_JPEG_QUALITY, 80]
+                        )
+                        if ok:
+                            h, w = frame.shape[:2]
+                            _setaur.sensor(
+                                source_id=os.getenv("SETAUR_CAMERA_SENSOR_ID", "OLL-top"),
+                                source_type=_SourceType.SENSOR,
+                                timestamp_ns=cam_ts_ns,
+                                data={
+                                    "timestamp_ns": cam_ts_ns,
+                                    "frame_id": self._setaur_frame_id,
+                                    "width": w,
+                                    "height": h,
+                                    "encoding": "jpeg",
+                                    "frame_data": jpeg_buf.tobytes(),
+                                },
+                            )
+                            self._setaur_frame_id += 1
+                    self._setaur_last_frame_ns = now_ns
 
         return obs_dict
 
@@ -186,6 +236,9 @@ class BiOmxFollower(Robot):
     @check_if_not_connected
     def disconnect(self):
         if self._setaur_enabled:
+            if self._setaur_cap is not None:
+                self._setaur_cap.release()
+                self._setaur_cap = None
             _setaur.shutdown()
             self._setaur_enabled = False
 
